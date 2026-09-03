@@ -1,6 +1,10 @@
-# Keep built assets and the model cache byte-exact across platforms.
-# The cache is a pickle; any line-ending translation would corrupt it.
-*.pkl        binary
-*.joblib     binary
+# Byte-exactness matters here, so these must NOT be line-ending converted.
+#
+# The analysed-dataset cache is keyed on a CONTENT hash of the corpus CSV. If git
+# rewrites CRLF to LF on checkout, the clone's bytes differ from the original,
+# the hash changes, the cache misses and cold start goes from ~2s back to ~30s -
+# silently. So the CSV and all build artefacts round-trip untouched.
+*.pkl             binary
+*.joblib          binary
+data/*.csv        -text
 frontend/dist/**  -text
-data/*.csv   text eol=lf
