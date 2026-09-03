@@ -10,7 +10,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
+/dist/            # Python packaging output at repo root only - NOT frontend/dist
 downloads/
 eggs/
 .eggs/
@@ -146,7 +146,7 @@ activemq-data/
 
 # SageMath parsed files
 *.sage.py
-
+Start SIF-Trace.bat
 
 # Environments
 .env
@@ -220,7 +220,6 @@ __marimo__/
 
 # ---------------------------------------------------------------- frontend
 node_modules/
-dist/
 dist-ssr/
 .vite/
 *.local
@@ -236,4 +235,9 @@ data/raw/
 *.zip
 models/*.joblib
 models/*.pkl
-models/cache/
+
+# Deployment needs these committed, so they are NOT ignored:
+#   frontend/dist/    - built UI, so the server image needs no Node stage
+#   models/cache/     - analysed-dataset cache, so cold start is ~2s not ~30s
+# The cache key is a content hash of the CSV plus an engine-source fingerprint,
+# so it survives a git clone and self-invalidates when either changes.

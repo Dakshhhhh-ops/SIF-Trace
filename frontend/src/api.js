@@ -3,7 +3,19 @@
  * can show the user directly - never a raw stack trace.
  */
 
-const BASE = "/api";
+/**
+ * API base.
+ *
+ * Empty by default, so calls go to a relative /api on the same origin - which is
+ * what happens when the backend serves the built frontend, and in local dev via
+ * the Vite proxy.
+ *
+ * For split hosting (frontend on Vercel, backend on Render) set VITE_API_BASE to
+ * the backend origin at build time, e.g.
+ *     VITE_API_BASE=https://sif-trace.onrender.com
+ */
+const API_ROOT = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+const BASE = `${API_ROOT}/api`;
 
 /**
  * Write token.
@@ -43,7 +55,9 @@ async function request(path, options = {}) {
     res = await fetch(`${BASE}${path}`, withToken(options));
   } catch {
     throw new Error(
-      "Cannot reach the SIF-Trace API. Start the backend with: uvicorn main:app --port 8000"
+      API_ROOT
+        ? `Cannot reach the SIF-Trace API at ${API_ROOT}. The backend may be waking up - free hosting sleeps when idle, so the first request can take up to a minute. Retry shortly.`
+        : "Cannot reach the SIF-Trace API. Start the backend with: uvicorn main:app --port 8000"
     );
   }
 

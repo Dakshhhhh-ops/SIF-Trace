@@ -62,10 +62,14 @@ class Pipeline:
     # exceeds the platform health-check window and the service is killed before
     # it ever answers. Caching the analysed result cuts cold start to ~2s.
     #
-    # The cache key includes the source file's size+mtime AND a fingerprint of
-    # the knowledge base, so editing a rule or a threshold invalidates it rather
-    # than silently serving stale analysis.
-    CACHE_VERSION = 3
+    # The cache key is the CONTENT hash of the source CSV plus a fingerprint of
+    # the engine source, so editing a rule invalidates it rather than silently
+    # serving stale analysis.
+    #
+    # Content, not mtime: git does not preserve modification times, so an
+    # mtime-based key always misses after a clone or a deploy - which is exactly
+    # when a fast cold start matters most.
+    CACHE_VERSION = 4
 
     @staticmethod
     def _kb_fingerprint() -> str:
@@ -79,8 +83,11 @@ class Pipeline:
         return h.hexdigest()[:16]
 
     def _cache_path(self, csv_path: Path) -> Path:
-        stat = csv_path.stat()
-        key = f"{csv_path.name}:{stat.st_size}:{int(stat.st_mtime)}:{self._kb_fingerprint()}"
+        h = hashlib.sha256()
+        with csv_path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        key = f"{h.hexdigest()}:{self._kb_fingerprint()}"
         digest = hashlib.sha256(key.encode()).hexdigest()[:20]
         cache_dir = Path(__file__).resolve().parents[2] / "models" / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)

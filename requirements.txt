@@ -1,20 +1,25 @@
 # SIF-Trace backend dependencies
-# Install:  python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
 #
-# Pinned to minimum versions verified working together. See requirements-lock.txt
-# for the exact resolved versions used during development.
+# Pinned exactly. The analysed-dataset cache in models/cache/ is a pickle
+# containing a fitted scikit-learn model; a different scikit-learn version on the
+# server cannot unpickle it, which would silently drop cold start from ~2s back
+# to ~30s. Pinning keeps deploys reproducible and fast.
+#
+#   python -m venv .venv
+#   .venv/Scripts/pip install -r requirements.txt      # Windows
+#   pip install -r requirements.txt                    # Linux / macOS
 
-numpy>=2.1
-pandas>=2.2.3
-scikit-learn>=1.5
-scipy>=1.14
+numpy==2.5.2
+pandas==3.0.5
+scikit-learn==1.9.0
+scipy==1.18.1
 
-fastapi>=0.115
-uvicorn[standard]>=0.30
-pydantic>=2.9
-python-multipart>=0.0.9
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+python-multipart==0.0.32
 
-# Notebook (optional - only needed to run notebooks/sif_training.ipynb)
+# Notebook (optional - only to run notebooks/sif_training.ipynb)
 # jupyter>=1.0
 # ipykernel>=6.29
 # nbconvert>=7.16

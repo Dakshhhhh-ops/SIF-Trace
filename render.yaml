@@ -1,0 +1,21 @@
+# Render blueprint.  New > Blueprint > point at this repo.
+services:
+  - type: web
+    name: sif-trace
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # One worker is required, not a cost saving: the analysed dataset is an
+    # in-memory singleton and a second worker would diverge from the first.
+    startCommand: python -m uvicorn main:app --host 0.0.0.0 --port $PORT --app-dir backend --workers 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # Set a value in the Render dashboard to require X-SIF-Token on upload and
+      # threshold changes. Without it, anyone with the URL can replace the data.
+      - key: SIF_ADMIN_TOKEN
+        sync: false
+      # Set to 1 to show the "DEMO DATA - NOT ACTUAL OIL RECORDS" header.
+      - key: SIF_SHOW_DEMO_BANNER
+        sync: false

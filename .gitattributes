@@ -1,0 +1,6 @@
+# Keep built assets and the model cache byte-exact across platforms.
+# The cache is a pickle; any line-ending translation would corrupt it.
+*.pkl        binary
+*.joblib     binary
+frontend/dist/**  -text
+data/*.csv   text eol=lf
