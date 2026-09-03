@@ -9,6 +9,7 @@ higher than the cost of an extra report in the review queue.
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass, field
 
 # --------------------------------------------------------------------------
@@ -146,8 +147,20 @@ class Settings:
 
 SETTINGS = Settings()
 
-# Mandatory disclaimer text. Referenced by the API and rendered by the UI.
+# Disclaimer text. Referenced by the API and rendered by the UI.
 DEMO_BANNER = "DEMO DATA - NOT ACTUAL OIL RECORDS"
+
+# Whether the demo banner is shown in the UI header.
+#
+# Currently OFF at the operator's request. Turn it back on by setting the env
+# var SIF_SHOW_DEMO_BANNER=1, or by flipping this default to True.
+#
+# Worth restoring before any presentation: the dashboard displays REAL OIL field
+# names (Duliajan, Moran, Baghjan, Dikom) against SYNTHETIC site assignments, so
+# without the banner the site ranking reads as a factual claim about real OIL
+# assets. The per-row provenance columns (narrative_provenance /
+# context_provenance) and the Settings page still record the truth either way.
+SHOW_DEMO_BANNER = os.getenv("SIF_SHOW_DEMO_BANNER", "").strip().lower() in {"1", "true", "yes", "on"}
 DECISION_SUPPORT_NOTICE = (
     "AI output is a decision-support signal and requires qualified HSE verification."
 )

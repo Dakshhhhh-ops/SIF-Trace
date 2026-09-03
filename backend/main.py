@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from sif import knowledge as kb
-from sif.config import DECISION_SUPPORT_NOTICE, DEMO_BANNER, TAGLINE
+from sif.config import DECISION_SUPPORT_NOTICE, DEMO_BANNER, SHOW_DEMO_BANNER, TAGLINE
 from sif.data_loader import DataLoadError
 from sif.pipeline import Pipeline
 
@@ -121,7 +121,7 @@ def health() -> dict[str, Any]:
         "dataset_loaded": d.loaded,
         "dataset_name": d.name,
         "is_demo": d.is_demo,
-        "demo_banner": DEMO_BANNER if d.is_demo else "",
+        "demo_banner": DEMO_BANNER if (d.is_demo and SHOW_DEMO_BANNER) else "",
         "total_reports": len(d.records),
         "model_trained": d.model_trained,
         "last_analysed": d.analysed_at,

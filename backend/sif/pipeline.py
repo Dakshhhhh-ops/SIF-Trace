@@ -19,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import knowledge as kb
-from .config import DEMO_BANNER, Settings, Thresholds
+from .config import DEMO_BANNER, SHOW_DEMO_BANNER, Settings, Thresholds
 from .data_loader import LoadResult, load
 from .iogp_mapper import map_rule
 from .pattern_detector import detect_patterns, top_patterns
@@ -292,7 +292,7 @@ class Pipeline:
         recs = self.dataset.records
         total = len(recs)
         if not total:
-            return {"loaded": False, "banner": DEMO_BANNER}
+            return {"loaded": False, "banner": DEMO_BANNER if SHOW_DEMO_BANNER else ""}
 
         sif = [r for r in recs if r["is_sif"]]
         sites = rank_groups(recs, "location", self.t)
@@ -304,7 +304,7 @@ class Pipeline:
         return {
             "loaded": True,
             "is_demo": self.dataset.is_demo,
-            "banner": DEMO_BANNER if self.dataset.is_demo else "",
+            "banner": DEMO_BANNER if (self.dataset.is_demo and SHOW_DEMO_BANNER) else "",
             "dataset_name": self.dataset.name,
             "total_reports": total,
             "sif_reports": len(sif),
