@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Check, Database, Loader2, RotateCcw, Sliders, Sparkles } from "lucide-react";
+import { Check, Database, KeyRound, Loader2, RotateCcw, Sliders, Sparkles } from "lucide-react";
 
-import api from "../api";
+import api, { auth } from "../api";
 import { DecisionSupportNotice, ErrorState, Loading, num, pct } from "../components/ui";
 
 const SLIDERS = [
@@ -62,6 +62,9 @@ export default function Settings({ onChanged }) {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const [token, setToken] = useState(auth.get());
+  const [tokenSaved, setTokenSaved] = useState(false);
 
   const [demoText, setDemoText] = useState(
     "Worker entered confined space without gas testing and permit verification."
@@ -184,6 +187,51 @@ export default function Settings({ onChanged }) {
           )}
         </div>
       </div>
+
+      {/* ----------------------------------------------- write access */}
+      {settings.write_protected && (
+        <div className="card">
+          <div className="card-header">
+            <div className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-slate-400" />
+              <div>
+                <h3 className="card-title">Write Access</h3>
+                <p className="card-sub">
+                  This deployment is read-only. Viewing needs nothing; uploading a dataset or
+                  changing thresholds requires the access token, so a public link cannot alter
+                  what everyone else sees.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 flex items-end gap-2 flex-wrap">
+            <div className="flex-1 min-w-[240px]">
+              <label className="label">Access token</label>
+              <input
+                type="password"
+                className="input"
+                value={token}
+                placeholder="paste the SIF_ADMIN_TOKEN value"
+                onChange={(e) => {
+                  setToken(e.target.value);
+                  setTokenSaved(false);
+                }}
+              />
+            </div>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                auth.set(token.trim());
+                setTokenSaved(true);
+                setTimeout(() => setTokenSaved(false), 2200);
+              }}
+            >
+              {tokenSaved ? <Check className="w-3.5 h-3.5" /> : null}
+              {tokenSaved ? "Saved" : "Save token"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------- thresholds */}
       <div className="card">

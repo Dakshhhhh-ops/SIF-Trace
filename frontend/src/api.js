@@ -5,10 +5,42 @@
 
 const BASE = "/api";
 
+/**
+ * Write token.
+ *
+ * A deployment can set SIF_ADMIN_TOKEN so that upload and threshold changes -
+ * which mutate state every viewer sees - are not open to anyone with the link.
+ * Reads stay public. The token is held per-browser; it is never bundled.
+ */
+const TOKEN_KEY = "sif-trace-token";
+
+export const auth = {
+  get: () => {
+    try {
+      return localStorage.getItem(TOKEN_KEY) || "";
+    } catch {
+      return "";
+    }
+  },
+  set: (t) => {
+    try {
+      t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* private browsing - the token simply will not persist */
+    }
+  },
+};
+
+function withToken(options = {}) {
+  const token = auth.get();
+  if (!token) return options;
+  return { ...options, headers: { ...(options.headers || {}), "X-SIF-Token": token } };
+}
+
 async function request(path, options = {}) {
   let res;
   try {
-    res = await fetch(`${BASE}${path}`, options);
+    res = await fetch(`${BASE}${path}`, withToken(options));
   } catch {
     throw new Error(
       "Cannot reach the SIF-Trace API. Start the backend with: uvicorn main:app --port 8000"

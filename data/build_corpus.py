@@ -47,6 +47,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from sif.config import ASSET_TYPES, OIL_FIELDS  # noqa: E402
 
@@ -280,20 +281,14 @@ def assign_site(report_id: str, narrative: str = "") -> tuple[str, str]:
 
 def assign_report_type(report_id: str, is_sif: int) -> str:
     """
-    Assign an OIL HSSE report type.
+    Every OSHA Severe Injury Report record is an injury that already happened,
+    so the only truthful type for a real record is "Incident".
 
-    Real HSSE portfolios are dominated by UA/UC observations and near misses,
-    with incidents a small minority. The source records are all actual injuries,
-    so the report-type mix is synthetic - and is what makes the corpus resemble
-    the triage workload the problem statement describes.
+    Typing them "Unsafe Act" or "Near Miss" produced narratives that contradicted
+    their own label - an unsafe-condition observation ending in surgery. The
+    UA/UC/Near-Miss layer is generated separately in synthetic_observations.py,
+    where the text genuinely describes a pre-injury observation.
     """
-    r = _h(report_id, "rtype") % 100
-    if r < 34:
-        return "Unsafe Act"
-    if r < 62:
-        return "Unsafe Condition"
-    if r < 88:
-        return "Near Miss"
     return "Incident"
 
 
@@ -339,6 +334,7 @@ def build(
     out_path: Path,
     limit: int | None = None,
     target_sif_rate: float = 0.25,
+    n_observations: int = 1200,
 ) -> dict:
     oil_rows: list[dict] = []
     industrial_negatives: list[dict] = []
@@ -409,6 +405,33 @@ def build(
     industrial_negatives.sort(key=lambda r: _h(r["report_id"], "pick"))
     rows = oil_rows + industrial_negatives[:need]
 
+    # Observation layer: real records cannot supply UA/UC/near-miss text,
+    # because every one of them is an injury. Generated separately and tagged.
+    if n_observations:
+        from synthetic_observations import generate
+
+        for i, obs in enumerate(generate(n_observations, OIL_FIELDS, ASSET_TYPES)):
+            rid = f"OIL-{_h(obs['seed'], 'rid') % 900000 + 100000}"
+            location, asset = assign_site(rid, obs["narrative"])
+            rows.append(
+                {
+                    "report_id": rid,
+                    "date": assign_date(rid, ""),
+                    "location": location,
+                    "asset": asset,
+                    "report_type": obs["report_type"],
+                    "narrative": obs["narrative"],
+                    "sif_label": obs["sif_label"],
+                    "sif_label_reason": obs["sif_label_reason"],
+                    "source_event_code": "",
+                    "source_nature": "",
+                    "data_source": "Synthetic OIL-style observation (generated)",
+                    "narrative_provenance": "synthetic",
+                    "context_provenance": "synthetic",
+                    "sector_provenance": "oil_gas_observation",
+                }
+            )
+
     # Stable ordering, then write.
     rows.sort(key=lambda r: (r["date"], r["report_id"]))
     if limit:
@@ -424,6 +447,7 @@ def build(
 
     n_sif_final = sum(r["sif_label"] for r in rows)
     n_oil = sum(r["sector_provenance"] == "oil_gas" for r in rows)
+    n_obs = sum(r["narrative_provenance"] == "synthetic" for r in rows)
     return {
         "rows": len(rows),
         "sif": n_sif_final,
@@ -432,6 +456,7 @@ def build(
         "oil_gas_rows": n_oil,
         "analogue_rows": len(rows) - n_oil,
         "oil_negatives_kept": n_neg_have,
+        "observations": n_obs,
         "skipped_short": skipped_short,
         "skipped_dupe": skipped_dupe,
         "locations": len({r["location"] for r in rows}),
@@ -445,6 +470,12 @@ def main() -> None:
     ap.add_argument("--out", default=Path("data/sif_reports.csv"), type=Path)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument(
+        "--observations",
+        type=int,
+        default=1200,
+        help="synthetic OIL-style UA/UC/near-miss observations to append",
+    )
+    ap.add_argument(
         "--sif-rate",
         type=float,
         default=0.25,
@@ -455,7 +486,7 @@ def main() -> None:
     if not args.sir.exists():
         raise SystemExit(f"SIR file not found: {args.sir}")
 
-    stats = build(args.sir, args.out, args.limit, args.sif_rate)
+    stats = build(args.sir, args.out, args.limit, args.sif_rate, args.observations)
     print("SIF-Trace corpus built")
     for k, v in stats.items():
         print(f"  {k:<14} {v}")

@@ -9,12 +9,16 @@ expensive NLP work happens once per upload rather than once per request.
 
 from __future__ import annotations
 
+import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from sif import knowledge as kb
@@ -32,7 +36,7 @@ async def lifespan(_: FastAPI):
     """Load the demo corpus at startup so the dashboard is never empty."""
     if DEMO_CSV.exists():
         try:
-            pipeline.load_path(DEMO_CSV, is_demo=True)
+            pipeline.load_path_cached(DEMO_CSV, is_demo=True)
         except DataLoadError as exc:  # pragma: no cover - defensive
             print(f"[SIF-Trace] demo corpus not loaded: {exc}")
     yield
@@ -48,14 +52,50 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Origins allowed to call the API. Local dev hosts are always permitted; add
+# deployed origins with  SIF_ALLOWED_ORIGINS="https://a.example,https://b.example"
+# When the frontend is served by this same app (the deployed layout below),
+# requests are same-origin and CORS is not involved at all.
+_DEFAULT_ORIGINS = [
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:3000", "http://127.0.0.1:3000",
+    "http://localhost:8000", "http://127.0.0.1:8000",
+]
+_env_origins = [o.strip() for o in os.getenv("SIF_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173",
-                   "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_DEFAULT_ORIGINS + _env_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --------------------------------------------------------------------------
+# Write protection
+#
+# Read endpoints are public - the dashboard is meant to be looked at. But upload
+# and threshold changes mutate GLOBAL state that every viewer sees, so on a
+# public URL they must not be open to anyone who has the link.
+#
+# Set SIF_ADMIN_TOKEN to require  X-SIF-Token: <value>  on mutating endpoints.
+# If it is unset the API stays fully open, which is correct for a laptop demo
+# and is reported by /api/health so the state is never a surprise.
+# --------------------------------------------------------------------------
+
+ADMIN_TOKEN = os.getenv("SIF_ADMIN_TOKEN", "").strip()
+
+
+def require_write_access(x_sif_token: str | None = Header(default=None)) -> None:
+    if not ADMIN_TOKEN:
+        return
+    if not x_sif_token or not secrets.compare_digest(x_sif_token, ADMIN_TOKEN):
+        raise HTTPException(
+            status_code=401,
+            detail="This deployment is read-only. A valid X-SIF-Token header is "
+                   "required to upload data or change thresholds.",
+        )
 
 
 def _require_data() -> None:
@@ -86,6 +126,7 @@ def health() -> dict[str, Any]:
         "model_trained": d.model_trained,
         "last_analysed": d.analysed_at,
         "analysis_seconds": d.analysis_seconds,
+        "write_protected": bool(ADMIN_TOKEN),
     }
 
 
@@ -280,7 +321,7 @@ def analyse_text(req: AnalyseRequest) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-@app.post("/api/upload")
+@app.post("/api/upload", dependencies=[Depends(require_write_access)])
 async def upload(
     file: UploadFile = File(...),
     is_demo: bool = Query(
@@ -316,7 +357,7 @@ async def upload(
     }
 
 
-@app.post("/api/reload-demo")
+@app.post("/api/reload-demo", dependencies=[Depends(require_write_access)])
 def reload_demo() -> dict[str, Any]:
     if not DEMO_CSV.exists():
         raise HTTPException(status_code=404, detail="Demo corpus not found on disk.")
@@ -365,10 +406,11 @@ def get_settings() -> dict[str, Any]:
         },
         "notice": DECISION_SUPPORT_NOTICE,
         "tagline": TAGLINE,
+        "write_protected": bool(ADMIN_TOKEN),
     }
 
 
-@app.patch("/api/settings/thresholds")
+@app.patch("/api/settings/thresholds", dependencies=[Depends(require_write_access)])
 def update_thresholds(update: ThresholdUpdate) -> dict[str, Any]:
     """
     Retune thresholds and re-derive every dependent view.
@@ -397,3 +439,39 @@ def update_thresholds(update: ThresholdUpdate) -> dict[str, Any]:
             )
 
     return {"ok": True, **pipeline.settings.as_dict()}
+
+
+# --------------------------------------------------------------------------
+# Serve the built frontend
+#
+# In development the Vite dev server proxies /api to this process. In a
+# deployment there is no proxy, so the built bundle is served from here: one
+# origin, one process, no CORS, and SPA deep links (/reports, /settings) resolve
+# instead of 404ing on refresh.
+#
+#     cd frontend && npm run build
+#     cd backend  && uvicorn main:app --port 8000
+# --------------------------------------------------------------------------
+
+FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+
+if FRONTEND_DIST.is_dir():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_DIST / "assets"),
+        name="assets",
+    )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str):
+        """Serve real files when they exist; otherwise hand back index.html."""
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail=f"No API route /{full_path}")
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        if (
+            full_path
+            and candidate.is_file()
+            and FRONTEND_DIST.resolve() in candidate.parents
+        ):
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_DIST / "index.html")

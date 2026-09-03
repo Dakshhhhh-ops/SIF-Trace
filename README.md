@@ -391,7 +391,17 @@ The demo corpus is built from the **OSHA Severe Injury Reports** public dataset
 | --- | --- |
 | `narrative` | **REAL** — verbatim free text written by safety professionals |
 | `sif_label` | **REAL** — derived independently from OSHA's OIICS event coding |
-| `location`, `asset`, `report_type`, `date` | **SYNTHETIC** — *not* real OIL sites or dates |
+| `location`, `asset`, `date` | **SYNTHETIC** — *not* real OIL sites or dates |
+| `report_type` | `Incident` on every real record — see below |
+
+**On report types.** Every OSHA record is an injury that already happened, so
+labelling one "Unsafe Condition" produced a narrative contradicting its own label
+(an unsafe-condition observation ending in surgery). Real records are therefore
+all typed **`Incident`**, which is what they are. The UA/UC/Near-Miss layer is
+generated separately by `data/synthetic_observations.py` in OIL's operational
+register — machine-written, tagged `narrative_provenance=synthetic`, and
+**excluded from the model's reported metrics**, which are computed on the real
+subset only.
 
 Every row carries these provenance columns, the UI shows
 **"DEMO DATA — NOT ACTUAL OIL RECORDS"** on every page, and nothing here is an
@@ -401,10 +411,11 @@ OIL operational statistic.
 
 | | Count |
 | --- | --- |
-| Total reports | 11,664 |
-| SIF-potential | 2,916 (**25.0%** — matches the 20–25% industry benchmark) |
+| Total reports | **12,864** |
+| SIF-potential | 3,192 (**24.8%** — matches the 20–25% industry benchmark) |
 | Real oil & gas records | 3,828 |
-| Industrial-analogue negatives | 7,836 |
+| Industrial-analogue negatives | 9,036 |
+| Synthetic OIL-style observations | 1,200 |
 
 OSHA SIR is a *severe-injury registry*, so its oil & gas slice is 76%
 high-energy. Training on that would produce a model that flags almost everything
@@ -441,7 +452,67 @@ model retrains on them and real validation metrics appear.
 
 ---
 
-## 13. Example workflow
+## 13. Deployment
+
+For a laptop demo the two-terminal Quick Start above is enough. To put it on a
+public URL, build the frontend and let FastAPI serve it - **one process, one
+origin, no CORS, no proxy**:
+
+```bash
+cd frontend && npm run build      # emits frontend/dist/
+cd ../backend
+export SIF_ADMIN_TOKEN="choose-a-long-random-value"   # see below
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Everything is then on `http://<host>:8000` - dashboard, deep links and API.
+
+### Write protection
+
+Reads are public; the dashboard is meant to be looked at. But **upload and
+threshold changes mutate global state every viewer sees**, so on a public URL
+they must not be open to anyone holding the link.
+
+Setting `SIF_ADMIN_TOKEN` requires an `X-SIF-Token` header on
+`POST /api/upload`, `POST /api/reload-demo` and `PATCH /api/settings/thresholds`.
+Paste the token once under **Settings → Write Access** and the browser keeps it.
+Leave the variable unset for a laptop demo and the API stays fully open;
+`/api/health` reports `write_protected` either way, so the state is never a
+surprise.
+
+### Cold start
+
+First analysis of the corpus takes ~28 s, which exceeds the health-check window
+on most free tiers - the service gets killed before it ever answers. The
+analysed result is therefore cached to `models/cache/`, cutting cold start to
+**~2.6 s**. The cache key covers the CSV's size and mtime *and* a fingerprint of
+the engine source, so editing a rule invalidates it rather than silently serving
+stale analysis.
+
+### One worker only
+
+`pipeline` is a module-level singleton holding the analysed dataset in memory.
+Run **one** worker. With two, an upload lands on a random process and the
+dashboard shows different numbers on each refresh. Scaling past one worker needs
+shared state (Redis or a database), which is deliberately out of scope here.
+
+| Setting | Value |
+| --- | --- |
+| Workers | 1 (required) |
+| Memory | ~200 MB RSS |
+| Cold start | ~2.6 s cached, ~28 s uncached |
+| `SIF_ADMIN_TOKEN` | required for a public URL |
+| `SIF_ALLOWED_ORIGINS` | only if the frontend is hosted separately |
+
+### Not for operational use
+
+This runs on US OSHA data with proxy labels and no HSE validation. It is a
+hackathon prototype. Deploying it against real OIL HSSE reports requires
+retraining on OIL data and the validation programme described in section 11.
+
+---
+
+## 14. Example workflow
 
 1. **Start** both servers → the demo corpus auto-loads
 2. **Dashboard** → SIF density, ranked sites, IOGP distribution, recurring
@@ -458,7 +529,7 @@ model retrains on them and real validation metrics appear.
 
 ---
 
-## 14. Tech stack
+## 15. Tech stack
 
 | Layer | Choice |
 | --- | --- |
@@ -469,13 +540,13 @@ model retrains on them and real validation metrics appear.
 
 No Docker, Kubernetes or cloud infrastructure. It runs locally with two commands.
 
-**Performance:** 11,664 reports fully analysed in ~28 s. Analysis happens once
+**Performance:** 12,864 reports fully analysed in ~28 s (~2.6 s from cache). Analysis happens once
 per upload; every dashboard view is then served from memory. Threshold changes
 re-derive views without re-running NLP.
 
 ---
 
-## 15. Honest limitations
+## 16. Honest limitations
 
 1. **Domain transfer.** Trained on OSHA severe-injury narratives from US oil &
    gas, not OIL's reports. Indian E&P reporting style, local terminology and
@@ -495,7 +566,7 @@ re-derive views without re-running NLP.
 
 ---
 
-## 16. Future scope
+## 17. Future scope
 
 - Fine-tune a domain transformer (SafetyBERT / IndicBERT) once OIL data is
   available; the classifier interface already supports swapping the estimator
@@ -507,7 +578,7 @@ re-derive views without re-running NLP.
 
 ---
 
-## 17. Ethical guardrail
+## 18. Ethical guardrail
 
 Output is a **decision-support signal requiring qualified HSE verification**.
 
@@ -519,7 +590,7 @@ model depends on, and would make the workplace less safe, not more.
 
 ---
 
-## 18. Attribution
+## 19. Attribution
 
 - **IOGP Report 459** — Life-Saving Rules
 - **OSHA Severe Injury Reports** — public dataset (US Dept of Labor)

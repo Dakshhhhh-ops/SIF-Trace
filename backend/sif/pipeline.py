@@ -10,6 +10,8 @@ the expensive work happens once per upload rather than once per request.
 
 from __future__ import annotations
 
+import hashlib
+import pickle
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,6 +55,69 @@ class Pipeline:
         self.settings = settings or Settings()
         self.classifier = SIFClassifier(threshold=self.settings.thresholds.sif_confidence)
         self.dataset = Dataset()
+
+    # -- analysis cache ---------------------------------------------------
+    #
+    # Full analysis of the demo corpus takes ~28s. On a hosted free tier that
+    # exceeds the platform health-check window and the service is killed before
+    # it ever answers. Caching the analysed result cuts cold start to ~2s.
+    #
+    # The cache key includes the source file's size+mtime AND a fingerprint of
+    # the knowledge base, so editing a rule or a threshold invalidates it rather
+    # than silently serving stale analysis.
+    CACHE_VERSION = 3
+
+    @staticmethod
+    def _kb_fingerprint() -> str:
+        src = Path(__file__).parent
+        h = hashlib.sha256()
+        for name in ("knowledge.py", "precursor_extractor.py", "sif_classifier.py",
+                     "iogp_mapper.py", "risk_engine.py"):
+            f = src / name
+            if f.exists():
+                h.update(f.read_bytes())
+        return h.hexdigest()[:16]
+
+    def _cache_path(self, csv_path: Path) -> Path:
+        stat = csv_path.stat()
+        key = f"{csv_path.name}:{stat.st_size}:{int(stat.st_mtime)}:{self._kb_fingerprint()}"
+        digest = hashlib.sha256(key.encode()).hexdigest()[:20]
+        cache_dir = Path(__file__).resolve().parents[2] / "models" / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / f"analysis-v{self.CACHE_VERSION}-{digest}.pkl"
+
+    def load_path_cached(self, path: str | Path, is_demo: bool = True) -> Dataset:
+        """Load from cache when the CSV and engine are both unchanged."""
+        path = Path(path)
+        cache = self._cache_path(path)
+
+        if cache.exists():
+            try:
+                with cache.open("rb") as fh:
+                    blob = pickle.load(fh)
+                self.classifier = blob["classifier"]
+                self.dataset = blob["dataset"]
+                self.settings.dataset_name = self.dataset.name
+                self.settings.demo_mode = self.dataset.is_demo
+                self.dataset.frame = None  # frame is not needed for serving
+                return self.dataset
+            except Exception:
+                # A corrupt or version-mismatched cache must never block startup.
+                try:
+                    cache.unlink()
+                except OSError:
+                    pass
+
+        ds = self.load_path(path, is_demo=is_demo)
+        try:
+            payload = {"classifier": self.classifier, "dataset": ds}
+            ds_frame, ds.frame = ds.frame, None      # do not pickle the raw frame
+            with cache.open("wb") as fh:
+                pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
+            ds.frame = ds_frame
+        except Exception:
+            pass  # caching is an optimisation, never a requirement
+        return ds
 
     # -- ingestion --------------------------------------------------------
     def load_csv(self, source, filename: str = "uploaded.csv",
