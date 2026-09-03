@@ -235,3 +235,4 @@ data/raw/
 *.zip
 models/*.joblib
 models/*.pkl
+models/cache/

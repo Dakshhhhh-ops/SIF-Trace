@@ -144,7 +144,7 @@ SIF-Trace/
 │   └── main.py                     ← FastAPI
 ├── data/
 │   ├── build_corpus.py             ← corpus builder + provenance rules
-│   └── sif_reports.csv             ← 11,664 analysed reports
+│   └── sif_reports.csv             ← 12,864 analysed reports
 ├── notebooks/
 │   ├── build_notebook.py
 │   └── sif_training.ipynb          ← full ML walkthrough, executed

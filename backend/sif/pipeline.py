@@ -140,14 +140,32 @@ class Pipeline:
         extractions = [extract(n) for n in narratives]
 
         # 2. Train on ground truth when the dataset carries verified labels.
+        #
+        # Synthetic rows are EXCLUDED from both training and metrics. Their
+        # labels are true by construction (we wrote the templates), so training
+        # on them would let the model learn template artefacts - the generated
+        # closing sentence differs between the SIF and non-SIF templates - and
+        # any metric computed on them would be self-congratulatory.
+        # They are still classified at inference like any other report.
         labels = df["sif_label"]
-        has_truth = bool(labels.notna().sum() >= 50 and labels.dropna().nunique() > 1)
+        trainable = labels.notna()
+        if "narrative_provenance" in df.columns:
+            synthetic = df["narrative_provenance"].astype(str).eq("synthetic")
+            trainable &= ~synthetic
+        else:
+            synthetic = pd.Series(False, index=df.index)
+
+        has_truth = bool(trainable.sum() >= 50 and labels[trainable].nunique() > 1)
         metrics: dict = {}
         if has_truth:
-            mask = labels.notna()
             metrics = self._train(
-                [n for n, m in zip(narratives, mask) if m],
-                labels[mask].astype(int).tolist(),
+                [n for n, m in zip(narratives, trainable) if m],
+                labels[trainable].astype(int).tolist(),
+            )
+            metrics["excluded_synthetic_rows"] = int(synthetic.sum())
+            metrics["trained_on"] = (
+                "real narratives only; synthetic observations excluded from "
+                "training and metrics"
             )
 
         # 3. Classification.
