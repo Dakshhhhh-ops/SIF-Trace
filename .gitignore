@@ -216,3 +216,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------- frontend
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+
+# ------------------------------------------------------------ SIF-Trace
+# Raw source datasets are large and are re-downloadable; the built corpus
+# (data/sif_reports.csv) IS committed so the demo runs out of the box.
+data/raw/
+*.zip
+models/*.joblib
+models/*.pkl

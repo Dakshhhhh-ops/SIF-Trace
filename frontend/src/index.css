@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-slate-50 text-navy-900 font-sans text-[13.5px] leading-relaxed;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { @apply bg-slate-100; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-slate-200 rounded-lg shadow-card;
+  }
+  .card-header {
+    @apply px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3;
+  }
+  .card-title {
+    @apply text-[13px] font-semibold text-navy-900 tracking-tight;
+  }
+  .card-sub {
+    @apply text-[11.5px] text-slate-500 mt-0.5;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12.5px] font-medium
+           border transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-navy-800 text-white border-navy-800 hover:bg-navy-900;
+  }
+  .btn-ghost {
+    @apply btn bg-white text-navy-700 border-slate-300 hover:bg-slate-50;
+  }
+  .input {
+    @apply w-full px-2.5 py-1.5 rounded-md border border-slate-300 bg-white text-[12.5px]
+           text-navy-900 placeholder:text-slate-400
+           focus:outline-none focus:ring-2 focus:ring-info-500/30 focus:border-info-500;
+  }
+  .label {
+    @apply block text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1;
+  }
+  .th {
+    @apply px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase
+           tracking-wide bg-slate-50 border-b border-slate-200 whitespace-nowrap;
+  }
+  .td {
+    @apply px-3 py-2 border-b border-slate-100 align-top;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border;
+  }
+  .nav-link {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium
+           text-navy-200 hover:bg-navy-800 hover:text-white transition-colors;
+  }
+  .nav-link-active {
+    @apply bg-navy-800 text-white;
+  }
+}
