@@ -69,7 +69,19 @@ class Pipeline:
     # Content, not mtime: git does not preserve modification times, so an
     # mtime-based key always misses after a clone or a deploy - which is exactly
     # when a fast cold start matters most.
-    CACHE_VERSION = 4
+    CACHE_VERSION = 5
+
+    @staticmethod
+    def _normalise(data: bytes) -> bytes:
+        """
+        Strip line-ending differences before hashing.
+
+        Git rewrites CRLF/LF on checkout depending on platform and settings, so
+        raw bytes differ between a Windows working copy and a Linux deploy even
+        when the content is identical. Hashing raw bytes therefore misses the
+        cache on every deploy - silently, since a miss just means a slow start.
+        """
+        return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
     @staticmethod
     def _kb_fingerprint() -> str:
@@ -79,14 +91,12 @@ class Pipeline:
                      "iogp_mapper.py", "risk_engine.py"):
             f = src / name
             if f.exists():
-                h.update(f.read_bytes())
+                h.update(Pipeline._normalise(f.read_bytes()))
         return h.hexdigest()[:16]
 
     def _cache_path(self, csv_path: Path) -> Path:
         h = hashlib.sha256()
-        with csv_path.open("rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
+        h.update(self._normalise(csv_path.read_bytes()))
         key = f"{h.hexdigest()}:{self._kb_fingerprint()}"
         digest = hashlib.sha256(key.encode()).hexdigest()[:20]
         cache_dir = Path(__file__).resolve().parents[2] / "models" / "cache"
